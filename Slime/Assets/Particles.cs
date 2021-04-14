@@ -70,14 +70,11 @@ public class Particles : MonoBehaviour
 
     void FixedUpdate()
     {
-        for (int i = 0; i < 2; i++)
-        {
-            Shader.SetFloat("Time", Time.fixedTime);
-            //Shader.Dispatch(1, Texture.width / 8 + Texture.width % 8, Texture.height / 8 + Texture.height % 8, 1);
-            Shader.Dispatch(0, ParticleList.Length / 16 + ParticleList.Length % 16, 1, 1);
-            Shader.Dispatch(4, DiffuseTexture.width / 8 + DiffuseTexture.width % 8, DiffuseTexture.height / 8 + DiffuseTexture.height % 8, 1);
-            Graphics.Blit(DiffuseTexture, Texture);
-        }
+        Shader.SetFloat("Time", Time.fixedTime);
+        //Shader.Dispatch(1, Texture.width / 8 + Texture.width % 8, Texture.height / 8 + Texture.height % 8, 1);
+        Shader.Dispatch(0, ParticleList.Length / 16 + ParticleList.Length % 16, 1, 1);
+        Shader.Dispatch(4, DiffuseTexture.width / 8 + DiffuseTexture.width % 8, DiffuseTexture.height / 8 + DiffuseTexture.height % 8, 1);
+        Graphics.Blit(DiffuseTexture, Texture);
     }
 
     public Material Transparency;
