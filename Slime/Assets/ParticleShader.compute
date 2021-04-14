@@ -27,10 +27,11 @@ uint Hash(uint State)
 // with cs.SetTexture
 float TimeDelta;
 float Time;
-uint Width;
-uint Height;
+int Width;
+int Height;
 uint ParticleCount;
 RWTexture2D<float4> Result;
+Texture2D<float4> EnvironmentMap;
 RWStructuredBuffer<Particle> Particles;
 
 float Rand(Particle P, uint I)
@@ -52,18 +53,20 @@ float sense(Particle agent, float sensorAngleOffset) {
 	float sensorAngle = agent.Angle + sensorAngleOffset;
 	float2 sensorDir = float2(cos(sensorAngle), sin(sensorAngle));
 
-	float2 sensorPos = agent.Position + sensorDir * 10;
+	float2 sensorPos = agent.Position + sensorDir * 20;
 	int sensorCentreX = (int)sensorPos.x;
 	int sensorCentreY = (int)sensorPos.y;
 
 	float sum = 0;
-	int sensorSize = 20;
+	int sensorSize = 1;
 
 	for (int offsetX = -sensorSize; offsetX <= sensorSize; offsetX++) {
 		for (int offsetY = -sensorSize; offsetY <= sensorSize; offsetY++) {
 			int sampleX = min(Width - 1, max(0, sensorCentreX + offsetX));
 			int sampleY = min(Height - 1, max(0, sensorCentreY + offsetY));
-			sum += Result[int2(sampleX, sampleY)].x;
+			sum += dot(2, Result[int2(sampleX, sampleY)]);
+			sum += dot(2, EnvironmentMap[int2(sampleX, sampleY)].x);
+			sum -= dot(2, EnvironmentMap[int2(sampleX, sampleY)].y);
 		}
 	}
 
@@ -75,12 +78,14 @@ void ParticleUpdate (uint3 id : SV_DispatchThreadID)
 {
 	//Render
 	if (Particles[id.x].Position.x >= 0 || Particles[id.x].Position.y >= 0)
-		Result[uint2((uint)Particles[id.x].Position.x, (uint)Particles[id.x].Position.y)] = float4(1.0, 1.0, 1.0, 1.0);
+	{
+		Result[uint2((uint)Particles[id.x].Position.x, (uint)Particles[id.x].Position.y)] += 2 * TimeDelta;
+	}
 
 	//Velocity and behaviour Code
 	uint random = Rand(Particles[id.x], id.x);
 
-	float sensorAngleRad = 10 * (3.141592654 / 180);
+	float sensorAngleRad = 112 * (3.141592654 / 180);
 	Particle P = Particles[id.x];
 	float weightForward = sense(P, 0);
 	float weightLeft = sense(P, sensorAngleRad);
@@ -88,7 +93,7 @@ void ParticleUpdate (uint3 id : SV_DispatchThreadID)
 
 
 	float randomSteerStrength = Shrink(random);
-	float turnSpeed = 2 * 2 * 3.1415;
+	float turnSpeed = -3 * 2 * 3.1415;
 
 	// Continue in same direction
 	if (weightForward > weightLeft && weightForward > weightRight) {
@@ -106,10 +111,14 @@ void ParticleUpdate (uint3 id : SV_DispatchThreadID)
 		Particles[id.x].Angle += randomSteerStrength * turnSpeed * TimeDelta;
 	}
 
-	Particles[id.x].Velocity = float2(cos(Particles[id.x].Angle), sin(Particles[id.x].Angle)) * 200;
+	Particles[id.x].Velocity = float2(cos(Particles[id.x].Angle), sin(Particles[id.x].Angle)) * 30;
 
 	//Bound Check
-	if (Particles[id.x].Position.x < 0 || Particles[id.x].Position.x >= Width || Particles[id.x].Position.y < 0 || Particles[id.x].Position.y >= Height) {
+	/*if (P.Position.x < 0) Particles[id.x].Position.x = Width - 1;
+	if (P.Position.x >= Width) Particles[id.x].Position.x = 0;
+	if (P.Position.y < 0) Particles[id.x].Position.y = Height - 1;
+	if (P.Position.y >= Height) Particles[id.x].Position.y = 0;*/
+	if (P.Position.x < 0 || P.Position.x >= Width || P.Position.y < 0 || P.Position.y >= Height) {
 		random = Hash(random);
 		float randomAngle = Rand(random) * 2 * 3.1415;
 
@@ -131,7 +140,7 @@ void PixelUpdate (uint3 id : SV_DispatchThreadID)
 [numthreads(8, 8, 1)]
 void ResetPixels(uint3 id : SV_DispatchThreadID)
 {
-	Result[id.xy] = float4(0, 0, 0, 1.0);
+	Result[id.xy] = float4(0, 0, 0, 0);
 }
 
 [numthreads(16, 1, 1)]
@@ -144,8 +153,8 @@ void ResetParticles(uint3 id : SV_DispatchThreadID)
 	random = Hash(random);
 	float Z = Shrink(random);
 	random = Hash(random);
-	Particles[id.x].Position = float2(Width / 2, Height / 2) + normalize(float2(X,Y)) * Z * Height / 4;
-	//Particles[id.x].Position = float2(Width / 2, Height / 2);
+	//Particles[id.x].Position = float2(Width / 2, Height / 2) + normalize(float2(X,Y)) * Z * Height / 4;
+	Particles[id.x].Position = float2(Width / 2, Height / 2);
 
 	/*X = Rand(random);
 	random = Hash(random);
@@ -159,11 +168,11 @@ RWTexture2D<float4> DiffusedMap;
 [numthreads(8, 8, 1)]
 void Diffuse(uint3 id : SV_DispatchThreadID)
 {
-	float decayRate = 0.2;
-	float diffuseRate = 0.3;
+	float decayRate = 0.75;
+	float diffuseRate = 5;
 
 	float4 sum = 0;
-	float4 originalCol = Result[id.xy];
+	float4 originalCol = Result[id.xy] + EnvironmentMap[id.xy];
 	// 3x3 blur
 	for (int offsetX = -1; offsetX <= 1; offsetX++) {
 		for (int offsetY = -1; offsetY <= 1; offsetY++) {
@@ -177,8 +186,7 @@ void Diffuse(uint3 id : SV_DispatchThreadID)
 	float diffuseWeight = saturate(diffuseRate * TimeDelta);
 	blurredCol = originalCol * (1 - diffuseWeight) + blurredCol * (diffuseWeight);
 
-	//DiffusedTrailMap[id.xy] = blurredCol * saturate(1 - decayRate * deltaTime);
-	float4 V = max(0, blurredCol - decayRate * TimeDelta);
+	float4 V = max(0, blurredCol - decayRate * TimeDelta) + EnvironmentMap[id.xy];
 	V.a = 1.0;
 	DiffusedMap[id.xy] = V;
 }
